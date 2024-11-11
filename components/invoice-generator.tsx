@@ -12,7 +12,6 @@ import {
   Download,
   Share,
   CalendarIcon,
-  AlertCircle,
   Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -38,7 +37,6 @@ import {
   currencyOptions,
   generateInvoiceNumber,
 } from "@/lib/helpers";
-import { Alert, AlertDescription } from "./ui/alert";
 import { invoiceTemplates } from "@/lib/template";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -84,12 +82,13 @@ export default function InvoiceGenerator() {
     async function signIn() {
       const { data, error } = await supabase.auth.signInAnonymously();
       console.log(data);
+      console.log(error);
     }
 
     signIn();
 
     return () => {};
-  }, []);
+  }, [supabase.auth]);
 
   const [currentItem, setCurrentItem] = useState<InvoiceItem>({
     ...emptyItem,
@@ -289,6 +288,8 @@ export default function InvoiceGenerator() {
           contentType: "application/pdf",
           upsert: true,
         });
+
+      console.log(pdfData);
 
       if (pdfError) {
         throw new Error(`Error uploading PDF: ${pdfError.message}`);
