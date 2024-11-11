@@ -1,6 +1,7 @@
 import React from "react";
 import { formatCurrency } from "@/lib/helpers";
 import { InvoiceData, InvoiceItem } from "../types/invoice";
+import Image from "next/image";
 
 interface InvoicePreviewProps {
   data: InvoiceData;
@@ -78,10 +79,12 @@ const InvoicePreview: React.FC<InvoicePreviewProps> = ({ data }) => {
       <div className="flex justify-between items-start mb-[15mm]">
         <div className="flex-1">
           {data.logo && (
-            <img
+            <Image
               src={data.logo}
               alt="Company Logo"
               className="h-[15mm] w-auto mb-[5mm] object-contain"
+              width={100}
+              height={100}
             />
           )}
           <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
@@ -257,10 +260,12 @@ const InvoicePreview: React.FC<InvoicePreviewProps> = ({ data }) => {
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
               Authorized Signature
             </h2>
-            <img
+            <Image
               src={data.signature}
               alt="Signature"
               className="h-[15mm] w-auto"
+              width={100}
+              height={100}
             />
           </div>
         )}

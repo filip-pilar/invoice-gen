@@ -2,9 +2,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import InvoicePreview from "@/components/invoice-preview";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
-import { Download, CreditCard } from "lucide-react";
-import DownloadButton from "@/components/invoice-download";
+import { CreditCard } from "lucide-react";
 import PDFDownloadButton from "@/components/invoice-download";
 
 export default async function InvoicePage({

@@ -22,6 +22,7 @@ export async function POST(req: Request) {
   try {
     event = stripe.webhooks.constructEvent(body, sig, endpointSecret);
   } catch (err) {
+    console.log(err)
     return NextResponse.json({ error: "Webhook error" }, { status: 400 });
   }
 
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
         .eq("id", invoice_id)
         .single();
 
+        console.log(invoice)
       // Send email notification (implement your email service here)
       // await sendPaymentConfirmationEmail(invoice);
     }
