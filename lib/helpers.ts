@@ -3,7 +3,7 @@ import { InvoiceItem } from "@/types/invoice";
 // utils/helpers.ts
 export const generateInvoiceNumber = () => {
   const date = new Date();
-  const formattedDate = date.toLocaleDateString("en-GB").replace(/\//g, "");
+  const formattedDate = date.toLocaleDateString().replace(/\//g, "");
   const uuid = crypto.randomUUID().split("-")[0];
   return `INV-${formattedDate}-${uuid}`;
 };
@@ -48,14 +48,14 @@ export const currencyOptions = [
 
 export type CurrencyCode = (typeof currencyOptions)[number]["value"];
 
-export const getCurrencySymbol = (currency: CurrencyCode): string => {
+export const getCurrencySymbol = (currency: string): string => {
   const option = currencyOptions.find((opt) => opt.value === currency);
   return option?.symbol || "$";
 };
 
 export const formatCurrency = (
   amount: number,
-  currency: CurrencyCode
+  currency: string
 ): string => {
   const symbol = getCurrencySymbol(currency);
 

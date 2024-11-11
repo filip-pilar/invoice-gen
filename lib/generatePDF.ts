@@ -2,137 +2,116 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { InvoiceData } from '../types/invoice';
 
-export async function generatePDF(data: InvoiceData): Promise<Response> {
-  // Create a temporary div to render the invoice
-  const tempDiv = document.createElement('div');
-  tempDiv.style.position = 'absolute';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.width = '816px'; // Standard A4 width in pixels (96 DPI)
-  document.body.appendChild(tempDiv);
+export async function generatePDF(invoiceData: InvoiceData): Promise<Blob> {
+  // Wait for the invoice preview element to be rendered
+  const element = document.querySelector('[data-invoice-preview="true"]');
+  if (!element) {
+    throw new Error('Invoice preview element not found');
+  }
 
-  // Create a new instance of InvoicePreview with the data
-  const invoicePreview = document.createElement('div');
-  invoicePreview.innerHTML = `
-    <div class="bg-white p-8 rounded-lg shadow min-h-[1056px] w-full">
-      <!-- Header -->
-      <div class="flex justify-between items-start mb-8">
-        <div>
-          ${data.logo ? `<img src="${data.logo}" alt="Company Logo" style="max-width: 200px; max-height: 100px; margin-bottom: 1rem;" />` : ''}
-          <h1 style="font-size: 1.5rem; font-weight: bold; color: #111827;">INVOICE</h1>
-        </div>
-        <div style="text-align: right;">
-          <p style="font-weight: 500;">Invoice #: ${data.invoiceNumber}</p>
-          <p>Date: ${data.date}</p>
-          <p>Due Date: ${data.dueDate}</p>
-        </div>
-      </div>
+  // Wait for fonts to load to ensure proper rendering
+  await document.fonts.ready;
 
-      <!-- Company and Client Info -->
-      <div style="display: flex; justify-content: space-between; margin-bottom: 2rem;">
-        <div style="max-width: 300px;">
-          <h2 style="font-weight: bold; color: #374151; margin-bottom: 0.5rem;">From:</h2>
-          <p style="font-weight: 500;">${data.companyName}</p>
-          <p style="white-space: pre-wrap;">${data.companyAddress}</p>
-        </div>
-        <div style="max-width: 300px;">
-          <h2 style="font-weight: bold; color: #374151; margin-bottom: 0.5rem;">To:</h2>
-          <p style="font-weight: 500;">${data.clientName}</p>
-          <p style="white-space: pre-wrap;">${data.clientAddress}</p>
-        </div>
-      </div>
-
-      <!-- Items Table -->
-      <div style="margin-bottom: 2rem;">
-        <table style="width: 100%; border-collapse: collapse;">
-          <thead>
-            <tr style="border-bottom: 1px solid #D1D5DB;">
-              <th style="text-align: left; padding: 0.5rem 0;">Description</th>
-              <th style="text-align: right; padding: 0.5rem 0;">Quantity</th>
-              <th style="text-align: right; padding: 0.5rem 0;">Price</th>
-              <th style="text-align: right; padding: 0.5rem 0;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.items.map(item => `
-              <tr style="border-bottom: 1px solid #E5E7EB;">
-                <td style="padding: 0.5rem 0;">${item.description}</td>
-                <td style="text-align: right; padding: 0.5rem 0;">${item.quantity}</td>
-                <td style="text-align: right; padding: 0.5rem 0;">$${item.price.toFixed(2)}</td>
-                <td style="text-align: right; padding: 0.5rem 0;">$${(item.quantity * item.price).toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="3" style="text-align: right; font-weight: bold; padding: 1rem 0;">Total:</td>
-              <td style="text-align: right; font-weight: bold; padding: 1rem 0;">$${data.items.reduce((total, item) => total + (item.quantity * item.price), 0).toFixed(2)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <!-- Notes -->
-      ${data.notes ? `
-        <div style="margin-bottom: 2rem;">
-          <h2 style="font-weight: bold; color: #374151; margin-bottom: 0.5rem;">Notes:</h2>
-          <p style="white-space: pre-wrap;">${data.notes}</p>
-        </div>
-      ` : ''}
-
-      <!-- Signature -->
-      ${data.signature ? `
-        <div style="margin-top: 2rem;">
-          <h2 style="font-weight: bold; color: #374151; margin-bottom: 0.5rem;">Signature:</h2>
-          <img src="${data.signature}" alt="Signature" style="max-width: 200px; max-height: 100px;" />
-        </div>
-      ` : ''}
-    </div>
-  `;
-  tempDiv.appendChild(invoicePreview);
+  // Clone the element to modify it for PDF generation
+  const clonedElement = element.cloneNode(true) as HTMLElement;
+  
+  // Apply specific styles for PDF generation
+  clonedElement.style.width = '816px'; // Equivalent to A4 width at 96 DPI
+  clonedElement.style.margin = '0';
+  clonedElement.style.padding = '48px'; // Maintain the p-12 padding
+  clonedElement.style.backgroundColor = 'white';
+  
+  // Temporarily append cloned element to body
+  document.body.appendChild(clonedElement);
 
   try {
-    // Convert the invoice preview to canvas
-    const canvas = await html2canvas(invoicePreview, {
-      scale: 2, // Increase quality
-      useCORS: true, // Enable loading of images from other domains
+    // Enhanced canvas options
+    const canvas = await html2canvas(clonedElement, {
+      scale: 2, // Increased scale for better quality
       logging: false,
-    });
-
-    // Create PDF
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'pt',
-      format: 'a4',
-    });
-
-    // Add the canvas as an image to the PDF
-    const imgData = canvas.toDataURL('image/png');
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = canvas.width;
-    const imgHeight = canvas.height;
-    const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-    const imgX = (pdfWidth - imgWidth * ratio) / 2;
-    const imgY = 0;
-
-    pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-
-    // Convert PDF to blob
-    const pdfBlob = pdf.output('blob');
-
-    // Clean up
-    document.body.removeChild(tempDiv);
-
-    // Return response
-    return new Response(pdfBlob, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="invoice-${data.invoiceNumber}.pdf"`,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      width: 816, // A4 width at 96 DPI
+      height: clonedElement.offsetHeight,
+      onclone: (clonedDoc) => {
+        // Ensure all styles are properly applied in the cloned document
+        const clonedElement = clonedDoc.querySelector('[data-invoice-preview="true"]');
+        if (clonedElement) {
+          (clonedElement as HTMLElement).style.transform = 'none';
+          (clonedElement as HTMLElement).style.maxHeight = 'none';
+          (clonedElement as HTMLElement).style.position = 'static';
+        }
       },
     });
+
+    // PDF configuration
+    const imgWidth = 210; // A4 width in mm
+    const pageHeight = 297; // A4 height in mm
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    // Create PDF with better initial settings
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true,
+    });
+
+    // Set PDF metadata
+    pdf.setProperties({
+      title: `Invoice ${invoiceData.invoiceNumber}`,
+      subject: `Invoice for ${invoiceData.clientName}`,
+      creator: invoiceData.companyName,
+    });
+
+    // Handle multi-page content
+    let heightLeft = imgHeight;
+    let position = 0;
+    let pageCount = 0;
+
+    // First page
+    pdf.addImage(
+      canvas.toDataURL('image/jpeg', 1.0),
+      'JPEG',
+      0,
+      position,
+      imgWidth,
+      imgHeight,
+      '',
+      'FAST'
+    );
+    heightLeft -= pageHeight;
+    pageCount++;
+
+    // Additional pages if needed
+    while (heightLeft >= 0) {
+      position = -pageHeight * pageCount;
+      pdf.addPage();
+      pdf.addImage(
+        canvas.toDataURL('image/jpeg', 1.0),
+        'JPEG',
+        0,
+        position,
+        imgWidth,
+        imgHeight,
+        '',
+        'FAST'
+      );
+      heightLeft -= pageHeight;
+      pageCount++;
+    }
+
+    // Cleanup
+    document.body.removeChild(clonedElement);
+
+    return pdf.output('blob');
   } catch (error) {
-    // Clean up on error
-    document.body.removeChild(tempDiv);
+    // Cleanup on error
+    if (document.body.contains(clonedElement)) {
+      document.body.removeChild(clonedElement);
+    }
+    console.error('Error generating PDF:', error);
     throw error;
   }
 }

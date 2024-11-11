@@ -12,13 +12,16 @@ export interface InvoiceItem {
 
 export interface InvoiceData {
   invoiceNumber: string;
+  invoice_number?: string;
   date: string;
   dueDate: string;
   currency: CurrencyCode;
   companyName: string;
   companyAddress: string;
+  companyEmail: string;
   clientName: string;
   clientAddress: string;
+  clientEmail: string;
   items: InvoiceItem[];
   taxRate: number;
   notes: string;
@@ -29,3 +32,9 @@ export interface InvoiceData {
 export interface InvoicePreviewProps {
   data: InvoiceData;
 }
+
+export interface InvoiceTemplate {
+    id: string;
+    name: string;
+    data: Partial<InvoiceData>;
+  }

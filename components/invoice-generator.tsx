@@ -11,9 +11,9 @@ import {
   ChevronLeft,
   Download,
   Share,
-  Plus,
-  Trash2,
   CalendarIcon,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -31,17 +31,31 @@ import {
 } from "@/components/ui/select";
 import InvoicePreview from "./invoice-preview";
 import { InvoiceItemForm } from "./invoice-item-form";
-import { InvoiceData, InvoiceItem } from "../types/invoice";
+import { InvoiceData, InvoiceItem, InvoiceTemplate } from "../types/invoice";
 import { generatePDF } from "@/lib/generatePDF";
 import {
   CurrencyCode,
   currencyOptions,
   generateInvoiceNumber,
 } from "@/lib/helpers";
+import { Alert, AlertDescription } from "./ui/alert";
+import { invoiceTemplates } from "@/lib/template";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 type InputChangeEvent = React.ChangeEvent<
   HTMLInputElement | HTMLTextAreaElement
 >;
+
+const emptyItem: InvoiceItem = {
+  id: "",
+  description: "",
+  quantity: 0,
+  price: 0,
+  discount: 0,
+  discountType: "percentage" as const,
+  tax: 0,
+};
 
 export default function InvoiceGenerator() {
   const [currentPage, setCurrentPage] = useState(1);
@@ -51,41 +65,81 @@ export default function InvoiceGenerator() {
     dueDate: "",
     currency: "USD" as CurrencyCode,
     companyName: "",
+    companyEmail: "",
     companyAddress: "",
     clientName: "",
+    clientEmail: "",
     clientAddress: "",
-    items: [
-      {
-        id: "",
-        description: "",
-        quantity: 0,
-        price: 0,
-        discount: 0,
-        discountType: "percentage" as const,
-        tax: 0,
-      },
-    ],
+    items: [],
     taxRate: 0,
     notes: "",
     logo: null,
     signature: null,
   });
+  const [isPublishing, setIsPublishing] = useState(false);
 
+  const supabase = createClient();
+
+  useEffect(() => {
+    async function signIn() {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      console.log(data);
+    }
+
+    signIn();
+
+    return () => {};
+  }, []);
+
+  const [currentItem, setCurrentItem] = useState<InvoiceItem>({
+    ...emptyItem,
+    id: crypto.randomUUID(),
+  });
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-
   const signatureRef = useRef<SignatureCanvas>(null);
 
   useEffect(() => {
     setInvoiceData((prev) => ({
       ...prev,
       invoiceNumber: generateInvoiceNumber(),
-      items: prev.items.map((item) => ({
-        ...item,
-        id: crypto.randomUUID(),
-      })),
     }));
   }, []);
+
+  const applyTemplate = (template: InvoiceTemplate | null) => {
+    if (!template) {
+      // Reset to initial state if "No Template" is selected
+      setInvoiceData((prev) => ({
+        ...prev,
+        companyName: "",
+        companyEmail: "",
+        companyAddress: "",
+        currency: "USD" as CurrencyCode,
+        taxRate: 0,
+        items: [],
+        notes: "",
+      }));
+      return;
+    }
+
+    setInvoiceData((prev) => ({
+      ...prev,
+      ...template.data,
+      // Preserve some fields that shouldn't be overwritten
+      invoiceNumber: prev.invoiceNumber,
+      date: prev.date,
+      dueDate: prev.dueDate,
+      clientName: prev.clientName,
+      clientEmail: prev.clientEmail,
+      clientAddress: prev.clientAddress,
+      // Generate new IDs for items to ensure uniqueness
+      items:
+        template.data.items?.map((item) => ({
+          ...item,
+          id: crypto.randomUUID(),
+        })) || [],
+    }));
+  };
 
   const handleInputChange = (e: InputChangeEvent) => {
     const { name, value } = e.target;
@@ -104,46 +158,44 @@ export default function InvoiceGenerator() {
     }
   };
 
-  const handleItemChange = (
-    index: number,
-    field: keyof InvoiceItem,
-    value: string | number
-  ) => {
-    const newItems = [...invoiceData.items];
-    const item = { ...newItems[index] };
-
-    if (
-      field === "quantity" ||
-      field === "price" ||
-      field === "discount" ||
-      field === "tax"
-    ) {
-      item[field] = Number(value);
-    } else if (field === "discountType") {
-      item[field] = value as "percentage" | "fixed";
-    } else {
-      item[field] = value as string;
-    }
-
-    newItems[index] = item;
-    setInvoiceData((prev) => ({ ...prev, items: newItems }));
+  const handleItemChange = (updatedItem: InvoiceItem) => {
+    setCurrentItem(updatedItem);
   };
 
-  const addItem = () => {
+  const handleAddItem = () => {
+    if (
+      !currentItem.description ||
+      currentItem.quantity <= 0 ||
+      currentItem.price <= 0
+    ) {
+      return;
+    }
+
+    // Validate discount and tax
+    const validatedItem = {
+      ...currentItem,
+      discount: Math.min(
+        currentItem.discount || 0,
+        currentItem.discountType === "percentage"
+          ? 100
+          : currentItem.price * currentItem.quantity
+      ),
+      tax: Math.min(currentItem.tax || 0, 100),
+    };
+
     setInvoiceData((prev) => ({
       ...prev,
-      items: [
-        ...prev.items,
-        {
-          id: crypto.randomUUID(),
-          description: "",
-          quantity: 0,
-          price: 0,
-          discount: 0,
-          discountType: "percentage",
-          tax: 0,
-        },
-      ],
+      items: [...prev.items, validatedItem],
+    }));
+
+    // Reset current item
+    setCurrentItem({ ...emptyItem, id: crypto.randomUUID() });
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setInvoiceData((prev) => ({
+      ...prev,
+      items: prev.items.filter((item) => item.id !== id),
     }));
   };
 
@@ -159,6 +211,13 @@ export default function InvoiceGenerator() {
     }
   };
 
+  const handleSignatureEnd = () => {
+    if (signatureRef.current) {
+      const signatureDataUrl = signatureRef.current.toDataURL();
+      setInvoiceData((prev) => ({ ...prev, signature: signatureDataUrl }));
+    }
+  };
+
   const clearSignature = () => {
     if (signatureRef.current) {
       signatureRef.current.clear();
@@ -168,19 +227,12 @@ export default function InvoiceGenerator() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setIsGenerating(true);
 
-    const signatureDataUrl = signatureRef.current?.isEmpty()
-      ? null
-      : signatureRef.current?.toDataURL();
-    const dataToSubmit: InvoiceData = {
-      ...invoiceData,
-      signature: signatureDataUrl || null,
-    };
-
     try {
-      const response = await generatePDF(dataToSubmit);
-      const blob = await response.blob();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const blob = await generatePDF(invoiceData);
       const url = window.URL.createObjectURL(blob);
       setPdfUrl(url);
       setCurrentPage(2);
@@ -202,15 +254,84 @@ export default function InvoiceGenerator() {
     }
   };
 
-  const handlePublish = () => {
-    console.log("Publishing invoice...");
-  };
+  const handlePublish = async () => {
+    if (!pdfUrl) {
+      toast.error("No PDF generated");
+      return;
+    }
 
-  const removeItem = (index: number) => {
-    setInvoiceData((prev) => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index),
-    }));
+    setIsPublishing(true);
+
+    try {
+      // Calculate total amount
+      const subtotal = invoiceData.items.reduce((sum, item) => {
+        const itemTotal = item.quantity * item.price;
+        const discountAmount =
+          item.discountType === "percentage"
+            ? (itemTotal * item.discount) / 100
+            : item.discount;
+        const afterDiscount = itemTotal - discountAmount;
+        const withTax = afterDiscount * (1 + item.tax / 100);
+        return sum + withTax;
+      }, 0);
+
+      const totalAmount = invoiceData.taxRate
+        ? subtotal * (1 + invoiceData.taxRate / 100)
+        : subtotal;
+
+      // Upload PDF to Supabase storage
+      const pdfBlob = await fetch(pdfUrl).then((r) => r.blob());
+      const pdfFileName = `${invoiceData.invoiceNumber}/${Date.now()}.pdf`;
+
+      const { data: pdfData, error: pdfError } = await supabase.storage
+        .from("invoices")
+        .upload(pdfFileName, pdfBlob, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+      if (pdfError) {
+        throw new Error(`Error uploading PDF: ${pdfError.message}`);
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("invoices").getPublicUrl(pdfFileName);
+
+      // Insert invoice data with default unpaid status
+      const { data: invoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          invoice_number: invoiceData.invoiceNumber,
+          data: invoiceData,
+          pdf_url: publicUrl,
+          amount_total: parseFloat(totalAmount.toFixed(2)),
+          due_date: invoiceData.dueDate || null,
+          payment_status: "unpaid",
+          amount_paid: 0,
+        })
+        .select()
+        .single();
+
+      if (invoiceError) {
+        throw new Error(
+          `Error inserting invoice data: ${invoiceError.message}`
+        );
+      }
+
+      // Show success message
+      toast.success("Invoice published successfully");
+
+      // Redirect to the invoice page
+      window.location.href = `/invoice/${invoice.id}`;
+    } catch (error) {
+      console.error("Error publishing invoice:", error);
+      toast.error(
+        error instanceof Error ? error.message : "An unknown error occurred"
+      );
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const handleCurrencyChange = (value: CurrencyCode) => {
@@ -220,16 +341,54 @@ export default function InvoiceGenerator() {
     }));
   };
 
+  // Function to get preview data including current item
+  const getPreviewData = (): InvoiceData => {
+    const previewItems = [...invoiceData.items];
+
+    // Only add current item to preview if it has at least a description
+    if (currentItem.description) {
+      previewItems.push(currentItem);
+    }
+
+    return {
+      ...invoiceData,
+      items: previewItems,
+    };
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {currentPage === 1 ? (
         <div className="flex h-full gap-4 p-4">
           {/* Form Section */}
-          <Card className="w-[600px] flex flex-col">
-            <CardHeader className="py-3">
-              <CardTitle>Invoice Generator</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 p-4">
+          <div className="w-[600px] flex flex-col">
+            <div className="py-3">
+              {/* <h2>Invoice Generator</h2> */}
+              <div className="mb-4">
+                <Label htmlFor="template">Invoice Template</Label>
+                <Select
+                  onValueChange={(value) => {
+                    const template = invoiceTemplates.find(
+                      (t) => t.id === value
+                    );
+                    applyTemplate(template || null);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Template</SelectItem>
+                    {invoiceTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex-1">
               <ScrollArea className="h-[calc(100vh-120px)] pr-4">
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -334,29 +493,25 @@ export default function InvoiceGenerator() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label htmlFor="taxRate">Tax Rate (%)</Label>
-                      <Input
-                        id="taxRate"
-                        type="number"
-                        value={invoiceData.taxRate}
-                        onChange={(e) =>
-                          setInvoiceData((prev) => ({
-                            ...prev,
-                            taxRate: Number(e.target.value),
-                          }))
-                        }
-                      />
-                    </div>
                   </div>
 
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="companyName">Company Name</Label>
+                      <Label htmlFor="companyName">Company Name *</Label>
                       <Input
                         id="companyName"
                         name="companyName"
                         value={invoiceData.companyName}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="companyEmail">Company Email *</Label>
+                      <Input
+                        id="companyEmail"
+                        name="companyEmail"
+                        type="email"
+                        value={invoiceData.companyEmail}
                         onChange={handleInputChange}
                       />
                     </div>
@@ -374,11 +529,21 @@ export default function InvoiceGenerator() {
 
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="clientName">Client Name</Label>
+                      <Label htmlFor="clientName">Client Name *</Label>
                       <Input
                         id="clientName"
                         name="clientName"
                         value={invoiceData.clientName}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="clientEmail">Client Email *</Label>
+                      <Input
+                        id="clientEmail"
+                        name="clientEmail"
+                        type="email"
+                        value={invoiceData.clientEmail}
                         onChange={handleInputChange}
                       />
                     </div>
@@ -395,35 +560,15 @@ export default function InvoiceGenerator() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <Label>Items</Label>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={addItem}
-                        className="h-8"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Item
-                      </Button>
-                    </div>
-                    <div className="space-y-4">
-                      {invoiceData.items.map((item, index) => (
-                        <InvoiceItemForm
-                          key={item.id}
-                          item={item}
-                          onChange={(updatedItem) => {
-                            const newItems = [...invoiceData.items];
-                            newItems[index] = updatedItem;
-                            setInvoiceData((prev) => ({
-                              ...prev,
-                              items: newItems,
-                            }));
-                          }}
-                          onRemove={() => removeItem(index)}
-                        />
-                      ))}
-                    </div>
+                    <Label>Items *</Label>
+                    <InvoiceItemForm
+                      currentItem={currentItem}
+                      items={invoiceData.items}
+                      onItemChange={handleItemChange}
+                      onAddItem={handleAddItem}
+                      onRemoveItem={handleRemoveItem}
+                      currency={invoiceData.currency}
+                    />
                   </div>
 
                   <div>
@@ -452,6 +597,7 @@ export default function InvoiceGenerator() {
                     <Label htmlFor="signature">Signature</Label>
                     <SignatureCanvas
                       ref={signatureRef}
+                      onEnd={handleSignatureEnd}
                       canvasProps={{
                         width: 500,
                         height: 150,
@@ -478,22 +624,20 @@ export default function InvoiceGenerator() {
                   </Button>
                 </form>
               </ScrollArea>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Preview Section */}
-          <Card className="flex-1 flex flex-col">
-            <CardHeader className="py-3">
-              <CardTitle>Live Preview</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 p-4">
+          <div className="flex-1 flex flex-col">
+            <div className="py-3">{/* <h2>Live Preview</h2> */}</div>
+            <div className="flex-1 p-4">
               <div className="h-[calc(100vh-120px)] overflow-auto">
                 <div className="transform scale-75 origin-top">
-                  <InvoicePreview data={invoiceData} />
+                  <InvoicePreview data={getPreviewData()} />
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="h-full p-4">
@@ -514,9 +658,13 @@ export default function InvoiceGenerator() {
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </Button>
-                <Button onClick={handlePublish}>
-                  <Share className="h-4 w-4 mr-2" />
-                  Publish
+                <Button onClick={handlePublish} disabled={isPublishing}>
+                  {isPublishing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Share className="h-4 w-4 mr-2" />
+                  )}
+                  {isPublishing ? "Publishing..." : "Publish"}
                 </Button>
               </div>
             </CardHeader>
