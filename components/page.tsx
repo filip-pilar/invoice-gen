@@ -24,7 +24,7 @@ export default async function StripeCheckoutPage({
     .single();
 
   if (!invoice) {
-    return redirect("/invoices");
+    return redirect("/404");
   }
 
   // Calculate amount due
@@ -46,8 +46,8 @@ export default async function StripeCheckoutPage({
         },
       ],
       mode: "payment",
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/invoices/${invoice.id}?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/invoices/${invoice.id}?canceled=true`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}?success=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}?canceled=true`,
       metadata: {
         invoice_id: invoice.id,
       },

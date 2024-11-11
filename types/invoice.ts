@@ -1,4 +1,4 @@
-import { CurrencyCode } from '@/lib/helpers';
+import { CurrencyCode } from "@/lib/helpers";
 
 export interface InvoiceItem {
   id: string;
@@ -6,7 +6,7 @@ export interface InvoiceItem {
   quantity: number;
   price: number;
   discount: number;
-  discountType: 'percentage' | 'fixed';
+  discountType: "percentage" | "fixed";
   tax: number;
 }
 
@@ -34,7 +34,24 @@ export interface InvoicePreviewProps {
 }
 
 export interface InvoiceTemplate {
-    id: string;
-    name: string;
-    data: Partial<InvoiceData>;
-  }
+  id: string;
+  name: string;
+  data: Partial<InvoiceData>;
+}
+
+export interface LemonSqueezyWebhookEvent {
+  meta: {
+    event_name: string;
+    custom_data: {
+      custom: {
+        invoice_id: string;
+      };
+    };
+  };
+  data: {
+    attributes: {
+      total: number;
+      // Add other relevant fields as needed
+    };
+  };
+}

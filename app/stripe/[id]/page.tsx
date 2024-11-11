@@ -2,9 +2,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Stripe } from "stripe";
 
-export default async function MockCheckoutPage({
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-10-28.acacia",
+});
+
+export default async function StripeCheckoutPage({
   params,
 }: {
   params: { id: string };
@@ -20,73 +24,38 @@ export default async function MockCheckoutPage({
     .single();
 
   if (!invoice) {
-    return redirect("/invoices");
+    return redirect("/404");
   }
 
   // Calculate amount due
   const amountDue = invoice.amount_total - (invoice.amount_paid || 0);
 
-  async function handlePayment() {
-    'use server';
-    
-    const supabase = createClient(cookies());
-    
-    // Update invoice as paid
-    await supabase
-      .from("invoices")
-      .update({
-        payment_status: "paid",
-        amount_paid: amountDue,
-        paid_at: new Date().toISOString(),
-      })
-      .eq("id", params.id);
+  try {
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          price_data: {
+            currency: invoice.currency || "usd",
+            product_data: {
+              name: `Invoice #${invoice.invoice_number}`,
+            },
+            unit_amount: Math.round(amountDue * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}?success=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}?canceled=true`,
+      metadata: {
+        invoice_id: invoice.id,
+      },
+    });
 
-    // Redirect back to invoice page
-    redirect(`/invoice/${params.id}?success=true`);
+    redirect(session.url!);
+  } catch (error) {
+    console.error("Error creating checkout session:", error);
+    redirect(`/404`);
   }
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold mb-2">Checkout</h1>
-          <p className="text-gray-600">Invoice #{invoice.invoice_number}</p>
-        </div>
-
-        <div className="space-y-4 mb-8">
-          <div className="flex justify-between border-b pb-4">
-            <span className="font-medium">Amount Due:</span>
-            <span className="font-bold">${amountDue.toFixed(2)}</span>
-          </div>
-          
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="font-medium mb-2">Test Card Details</h2>
-            <div className="space-y-2 text-sm text-gray-600">
-              <p>Card Number: 4242 4242 4242 4242</p>
-              <p>Expiry: Any future date</p>
-              <p>CVC: Any 3 digits</p>
-            </div>
-          </div>
-        </div>
-
-        <form action={handlePayment}>
-          <Button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            Pay ${amountDue.toFixed(2)}
-          </Button>
-        </form>
-
-        <div className="mt-4 text-center">
-          <a
-            href={`/invoice/${params.id}`}
-            className="text-sm text-gray-600 hover:text-gray-800"
-          >
-            Cancel and return to invoice
-          </a>
-        </div>
-      </div>
-    </div>
-  );
 }
