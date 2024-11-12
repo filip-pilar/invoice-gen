@@ -23,7 +23,6 @@ export default async function InvoicePage({
     return <div>Invoice not found</div>;
   }
 
-  console.log(invoice)
 
   return (
     <div className="container mx-auto p-4">

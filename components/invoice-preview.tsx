@@ -57,6 +57,12 @@ const InvoicePreview: React.FC<InvoicePreviewProps> = ({ data }) => {
     );
   };
 
+  const formatDate = (date: string | Date): string => {
+    const d = new Date(date);
+    // Use explicit date formatting to ensure consistency
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   return (
     <div
       className="bg-white shadow-lg w-[210mm] h-[297mm] mx-auto relative"
@@ -119,21 +125,19 @@ const InvoicePreview: React.FC<InvoicePreviewProps> = ({ data }) => {
             </p>
           </div>
           <div className="mt-4 space-y-1">
-            <div className="flex justify-end gap-2 text-sm">
-              <span className="text-gray-500">Issue Date:</span>
-              <span className="font-medium">
-                {new Date(data.date).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex justify-end gap-2 text-sm">
-              <span className="text-gray-500">Due Date:</span>
-              <span className="font-medium">
-                {data.dueDate
-                  ? new Date(data.dueDate).toLocaleDateString()
-                  : new Date(data.date).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
+        <div className="flex justify-end gap-2 text-sm">
+          <span className="text-gray-500">Issue Date:</span>
+          <span className="font-medium">
+            {formatDate(data.date)}
+          </span>
+        </div>
+        <div className="flex justify-end gap-2 text-sm">
+          <span className="text-gray-500">Due Date:</span>
+          <span className="font-medium">
+            {formatDate(data.dueDate || data.date)}
+          </span>
+        </div>
+      </div>
         </div>
       </div>
 

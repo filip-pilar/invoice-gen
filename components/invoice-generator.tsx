@@ -14,7 +14,7 @@ import {
   CalendarIcon,
   Loader2,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parse, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -145,14 +145,29 @@ export default function InvoiceGenerator() {
     setInvoiceData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+    try {
+      // Use parseISO for consistent date parsing
+      const date = parseISO(dateString);
+      // Explicitly use yyyy-MM-dd format for consistency
+      return format(date, "yyyy-MM-dd");
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "";
+    }
+  };
+
   const handleDateChange = (
     field: "date" | "dueDate",
     value: Date | undefined
   ) => {
     if (value) {
+      // Format the date in ISO format (YYYY-MM-DD)
+      const dateString = format(value, "yyyy-MM-dd");
       setInvoiceData((prev) => ({
         ...prev,
-        [field]: value.toISOString().split("T")[0],
+        [field]: dateString,
       }));
     }
   };
@@ -414,7 +429,7 @@ export default function InvoiceGenerator() {
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {invoiceData.date ? (
-                              format(new Date(invoiceData.date), "PPP")
+                              formatDate(invoiceData.date)
                             ) : (
                               <span>Pick a date</span>
                             )}
@@ -425,7 +440,7 @@ export default function InvoiceGenerator() {
                             mode="single"
                             selected={
                               invoiceData.date
-                                ? new Date(invoiceData.date)
+                                ? new Date(invoiceData.date + "T00:00:00")
                                 : undefined
                             }
                             onSelect={(date) => handleDateChange("date", date)}
@@ -444,9 +459,8 @@ export default function InvoiceGenerator() {
                               !invoiceData.dueDate && "text-muted-foreground"
                             }`}
                           >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
                             {invoiceData.dueDate ? (
-                              format(new Date(invoiceData.dueDate), "PPP")
+                              formatDate(invoiceData.dueDate)
                             ) : (
                               <span>Pick a date</span>
                             )}
@@ -457,7 +471,7 @@ export default function InvoiceGenerator() {
                             mode="single"
                             selected={
                               invoiceData.dueDate
-                                ? new Date(invoiceData.dueDate)
+                                ? new Date(invoiceData.dueDate + "T00:00:00")
                                 : undefined
                             }
                             onSelect={(date) =>
